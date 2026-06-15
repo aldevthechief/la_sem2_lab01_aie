@@ -18,7 +18,28 @@ def left_canonicalize(tt: TTTensor, backend: BackendInterface) -> TTTensor:
         tt:      исходный тензор
         backend: интерфейс backend
     """
-    pass
+    cores = [core.copy() for core in tt.cores]
+
+    for k in range(tt.order - 1):
+        r1, n, r2 = cores[k].shape
+        matrix = cores[k].reshape((r1 * n, r2))
+        U, S, V = backend.svd(matrix)
+        rank = _numerical_rank(S)
+
+        U = _truncate_columns(U, rank, backend)
+        S = _truncate_vector(S, rank, backend)
+        V = _truncate_rows(V, rank, backend)
+
+        cores[k] = U.reshape((r1, n, rank))
+        transfer = _multiply_diag_matrix(S, V, rank, backend)
+
+        next_core = cores[k + 1]
+        next_matrix = next_core.reshape((r2, next_core.shape[1] * next_core.shape[2]))
+        cores[k + 1] = backend.matmul(transfer, next_matrix).reshape(
+            (rank, next_core.shape[1], next_core.shape[2])
+        )
+
+    return TTTensor(cores)
 
 
 def right_canonicalize(tt: TTTensor, backend: BackendInterface) -> TTTensor:
@@ -29,7 +50,28 @@ def right_canonicalize(tt: TTTensor, backend: BackendInterface) -> TTTensor:
         tt:      исходный тензор
         backend: интерфейс backend
     """
-    pass
+    cores = [core.copy() for core in tt.cores]
+
+    for k in range(tt.order - 1, 0, -1):
+        r1, n, r2 = cores[k].shape
+        matrix = cores[k].reshape((r1, n * r2))
+        U, S, V = backend.svd(matrix)
+        rank = _numerical_rank(S)
+
+        U = _truncate_columns(U, rank, backend)
+        S = _truncate_vector(S, rank, backend)
+        V = _truncate_rows(V, rank, backend)
+
+        cores[k] = V.reshape((rank, n, r2))
+        transfer = _multiply_columns_by_diag(U, S, backend)
+
+        prev_core = cores[k - 1]
+        prev_matrix = prev_core.reshape((prev_core.shape[0] * prev_core.shape[1], r1))
+        cores[k - 1] = backend.matmul(prev_matrix, transfer).reshape(
+            (prev_core.shape[0], prev_core.shape[1], rank)
+        )
+
+    return TTTensor(cores)
 
 
 # ════════════════════════════════════════════════
@@ -44,8 +86,8 @@ def _numerical_rank(
     """
     Возвращает числовой ранг матрицы по вектору сингулярных значений.
 
-    Сингулярное число \sigma_i считаем ненулевым, если:
-        |\sigma_i| > max(abs_tol, rel_tol * max(\sigma_1, ..., \sigma_n))
+    Сингулярное число sigma_i считаем ненулевым, если:
+        |sigma_i| > max(abs_tol, rel_tol * max(sigma_1, ..., sigma_n))
 
     Args:
         S:       одномерный тензор формы (k,) — сингулярные значения
@@ -53,7 +95,15 @@ def _numerical_rank(
         rel_tol: относительный допуск (по умолчанию 1e-8)
         abs_tol: абсолютный допуск (по умолчанию 1e-12)
     """
-    pass
+    if S.size == 0:
+        return 1
+
+    threshold = max(abs_tol, rel_tol * max(abs(x) for x in S.data))
+    rank = 0
+    for value in S.data:
+        if abs(value) > threshold:
+            rank += 1
+    return max(1, rank)
 
 
 def _truncate_columns(
@@ -72,7 +122,12 @@ def _truncate_columns(
         rank:    число сохраняемых столбцов
         backend: интерфейс backend
     """
-    pass
+    rows, cols = matrix.shape
+    data = []
+    for i in range(rows):
+        for j in range(rank):
+            data.append(matrix.data[i * cols + j])
+    return DenseTensor((rows, rank), data)
 
 
 def _truncate_rows(
@@ -88,7 +143,8 @@ def _truncate_rows(
         rank:    число сохраняемых строк
         backend: интерфейс backend
     """
-    pass
+    cols = matrix.shape[1]
+    return DenseTensor((rank, cols), matrix.data[:rank * cols])
 
 
 def _truncate_vector(
@@ -104,7 +160,7 @@ def _truncate_vector(
         rank:    число сохраняемых элементов
         backend: интерфейс backend
     """
-    pass
+    return DenseTensor((rank,), vector.data[:rank])
 
 
 def _multiply_diag_matrix(
@@ -123,7 +179,7 @@ def _multiply_diag_matrix(
         rank:     длина диагонального вектора
         backend:  интерфейс backend
     """
-    pass
+    return backend.matmul(backend.diag(diag_vec), matrix)
 
 
 def _multiply_columns_by_diag(
@@ -140,4 +196,9 @@ def _multiply_columns_by_diag(
         diag_vec: одномерный тензор формы (rank,), содержащий диагональные элементы
         backend:  интерфейс backend
     """
-    pass
+    rows, cols = matrix.shape
+    data = []
+    for i in range(rows):
+        for j in range(cols):
+            data.append(matrix.data[i * cols + j] * diag_vec.data[j])
+    return DenseTensor((rows, cols), data)

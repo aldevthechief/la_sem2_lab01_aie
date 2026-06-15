@@ -2,6 +2,8 @@
 
 """Вспомогательные функции для работы с тензорами."""
 
+import math
+
 
 def validate_shape(
     shape: tuple[int, ...] | list[int]
@@ -23,7 +25,15 @@ def validate_shape(
         ValueError: если хотя бы один элемент shape не является
                     положительным целым числом
     """
-    pass
+
+    if not isinstance(shape, tuple) and not isinstance(shape, list):
+        raise TypeError()
+
+    for x in shape:
+        if not isinstance(x, int) or x <= 0:
+            raise ValueError()
+
+    return tuple(shape)
 
 
 def compute_size(shape: tuple[int, ...]) -> int:
@@ -33,7 +43,7 @@ def compute_size(shape: tuple[int, ...]) -> int:
     Args:
         shape: кортеж размеров тензора (n_0, n_1, ..., n_{d-1})
     """
-    pass
+    return math.prod(shape)
 
 
 def compute_strides(shape: tuple[int, ...]) -> tuple[int, ...]:
@@ -46,7 +56,7 @@ def compute_strides(shape: tuple[int, ...]) -> tuple[int, ...]:
     Args:
         shape: кортеж размеров тензора (n_0, n_1, ..., n_{d-1})
     """
-    pass
+    return tuple(math.prod(shape[i + 1:]) for i in range(len(shape)))
 
 
 def multi_index_to_flat(
@@ -61,7 +71,7 @@ def multi_index_to_flat(
         multi_index: кортеж индексов (i_0, i_1, ..., i_{d-1})
         strides:     кортеж шагов   (s_0, s_1, ..., s_{d-1})
     """
-    pass
+    return sum(idx * stride for idx, stride in zip(multi_index, strides))
 
 
 def flat_to_multi_index(
@@ -75,7 +85,9 @@ def flat_to_multi_index(
         flat_index: плоский индекс в списке данных
         shape:      кортеж размеров тензора (n_0, n_1, ..., n_{d-1})
     """
-    pass
+    strides = compute_strides(shape)
+    return tuple((flat_index // stride) % size for size, stride in zip(shape, strides))
+
 
 def check_shapes_match(
     shape1: tuple[int, ...],
@@ -94,4 +106,6 @@ def check_shapes_match(
     Raises:
         ValueError: если формы не совпадают
     """
-    pass
+    if shape1 != shape2:
+        raise ValueError()
+    return
