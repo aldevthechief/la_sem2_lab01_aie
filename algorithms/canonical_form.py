@@ -23,20 +23,14 @@ def left_canonicalize(tt: TTTensor, backend: BackendInterface) -> TTTensor:
     for k in range(tt.order - 1):
         r1, n, r2 = cores[k].shape
         matrix = cores[k].reshape((r1 * n, r2))
-        U, S, V = backend.svd(matrix)
-        rank = _numerical_rank(S)
+        Q, R = backend.qr(matrix)
 
-        U = _truncate_columns(U, rank, backend)
-        S = _truncate_vector(S, rank, backend)
-        V = _truncate_rows(V, rank, backend)
-
-        cores[k] = U.reshape((r1, n, rank))
-        transfer = _multiply_diag_matrix(S, V, rank, backend)
+        cores[k] = Q.reshape((r1, n, r2))
 
         next_core = cores[k + 1]
         next_matrix = next_core.reshape((r2, next_core.shape[1] * next_core.shape[2]))
-        cores[k + 1] = backend.matmul(transfer, next_matrix).reshape(
-            (rank, next_core.shape[1], next_core.shape[2])
+        cores[k + 1] = backend.matmul(R, next_matrix).reshape(
+            (r2, next_core.shape[1], next_core.shape[2])
         )
 
     return TTTensor(cores)
@@ -55,20 +49,16 @@ def right_canonicalize(tt: TTTensor, backend: BackendInterface) -> TTTensor:
     for k in range(tt.order - 1, 0, -1):
         r1, n, r2 = cores[k].shape
         matrix = cores[k].reshape((r1, n * r2))
-        U, S, V = backend.svd(matrix)
-        rank = _numerical_rank(S)
+        Q, R = backend.qr(backend.transpose(matrix))
+        Q = backend.transpose(Q)
+        R = backend.transpose(R)
 
-        U = _truncate_columns(U, rank, backend)
-        S = _truncate_vector(S, rank, backend)
-        V = _truncate_rows(V, rank, backend)
-
-        cores[k] = V.reshape((rank, n, r2))
-        transfer = _multiply_columns_by_diag(U, S, backend)
+        cores[k] = Q.reshape((r1, n, r2))
 
         prev_core = cores[k - 1]
         prev_matrix = prev_core.reshape((prev_core.shape[0] * prev_core.shape[1], r1))
-        cores[k - 1] = backend.matmul(prev_matrix, transfer).reshape(
-            (prev_core.shape[0], prev_core.shape[1], rank)
+        cores[k - 1] = backend.matmul(prev_matrix, R).reshape(
+            (prev_core.shape[0], prev_core.shape[1], r1)
         )
 
     return TTTensor(cores)
